@@ -4,7 +4,7 @@ You are a senior QA engineer reviewing the feature described below.
 
 Create a detailed test plan for the "Create new academic program" feature.
 
-**##Acceptance Criteria**
+## Acceptance Criteria
 
 Scenario: Navigate to program creation form
   Given I am logged in as admin

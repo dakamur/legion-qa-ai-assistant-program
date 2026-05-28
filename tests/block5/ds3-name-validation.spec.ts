@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/cleanup.fixture';
 
 const BASE_URL = process.env.DIDAXIS_URL ?? 'https://test.didaxis.studio';
 
@@ -15,13 +15,28 @@ async function navigateToPrograms(page: import('@playwright/test').Page) {
   await expect(page.getByRole('button', { name: '+ New Program' })).toBeVisible();
 }
 
-async function createProgram(page: import('@playwright/test').Page, name: string, description: string) {
+function modalCreateButton(page: import('@playwright/test').Page) {
+  return page.getByRole('dialog', { name: 'New Program' }).getByRole('button', { name: 'Create', exact: true });
+}
+
+async function createProgram(page: import('@playwright/test').Page, name: string, description: string, trackFn: (uuid: string) => void) {
+  const responsePromise = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.url().includes('/api/programs'),
+  );
   await page.getByRole('button', { name: '+ New Program' }).click();
   await page.getByLabel('Program Name').fill(name);
   await page.getByLabel('Description').fill(description);
-  await page.getByRole('button', { name: 'Create' }).click();
+  await modalCreateButton(page).click();
   await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
   await expect(page.getByText(name)).toBeVisible();
+  const res = await responsePromise;
+  if (res.ok()) {
+    try {
+      const body = await res.json();
+      const id = body?.data?.id ?? body?.id;
+      if (id) trackFn(id);
+    } catch { /* non-JSON response */ }
+  }
 }
 
 function openEditDialog(page: import('@playwright/test').Page, programName: string) {
@@ -46,7 +61,7 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(programName);
     await page.getByLabel('Description').fill('Special characters acceptance test');
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
 
     await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
     await expect(page.getByText(programName)).toBeVisible();
@@ -58,7 +73,7 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(programName);
     await page.getByLabel('Description').fill('Unicode acceptance test');
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
 
     await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
     await expect(page.getByText(programName)).toBeVisible();
@@ -70,7 +85,7 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(programName);
     await page.getByLabel('Description').fill('Mixed characters test');
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
 
     await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
     await expect(page.getByText(programName)).toBeVisible();
@@ -82,7 +97,7 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await page.getByLabel('Program Name').fill('   ');
     await page.getByLabel('Description').fill('Whitespace test');
 
-    await expect(page.getByRole('button', { name: 'Create' })).toBeDisabled();
+    await expect(modalCreateButton(page)).toBeDisabled();
   });
 
   test('TC-005: Tab-only program name is rejected', async ({ page }) => {
@@ -91,7 +106,7 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await page.getByLabel('Program Name').fill('\t');
     await page.getByLabel('Description').fill('Tab test');
 
-    await expect(page.getByRole('button', { name: 'Create' })).toBeDisabled();
+    await expect(modalCreateButton(page)).toBeDisabled();
   });
 
   // BUG: App allows duplicate program names — no uniqueness validation exists
@@ -101,13 +116,13 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(programName);
     await page.getByLabel('Description').fill('First creation');
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
     await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
 
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(programName);
     await page.getByLabel('Description').fill('Duplicate attempt');
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
 
     await expect(page.getByRole('dialog', { name: 'New Program' })).toBeVisible();
   });
@@ -119,13 +134,13 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(programName);
     await page.getByLabel('Description').fill('Original');
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
     await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
 
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(programName.toLowerCase());
     await page.getByLabel('Description').fill('Lowercase duplicate');
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
 
     await expect(page.getByRole('dialog', { name: 'New Program' })).toBeVisible();
   });
@@ -137,13 +152,13 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(programName);
     await page.getByLabel('Description').fill('Original');
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
     await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
 
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(`  ${programName}  `);
     await page.getByLabel('Description').fill('Padded duplicate');
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
 
     await expect(page.getByRole('dialog', { name: 'New Program' })).toBeVisible();
   });
@@ -153,7 +168,7 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
 
     await page.getByLabel('Description').fill('Empty name test');
 
-    await expect(page.getByRole('button', { name: 'Create' })).toBeDisabled();
+    await expect(modalCreateButton(page)).toBeDisabled();
   });
 
   test('TC-010: Program name with HTML/script tags is sanitized and not executed', async ({ page }) => {
@@ -165,7 +180,7 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await page.getByLabel('Program Name').fill(xssPayload);
     await page.getByLabel('Description').fill('XSS test');
 
-    const createBtn = page.getByRole('button', { name: 'Create' });
+    const createBtn = modalCreateButton(page);
     if (await createBtn.isEnabled()) {
       await createBtn.click();
     }
@@ -179,18 +194,18 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(programName);
     await page.getByLabel('Description').fill('Punctuation only test');
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
 
     await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
     await expect(page.getByText(programName)).toBeVisible();
   });
 
   // BUG: App allows duplicate names on edit — no uniqueness validation on save
-  test.fail('TC-012: Duplicate check applies during edit as well as create', async ({ page }) => {
+  test.fail('TC-012: Duplicate check applies during edit as well as create', async ({ page, trackProgram }) => {
     const programA = `ProgA-${Date.now()}`;
     const programB = `ProgB-${Date.now()}`;
-    await createProgram(page, programA, 'da');
-    await createProgram(page, programB, 'db');
+    await createProgram(page, programA, 'da', trackProgram);
+    await createProgram(page, programB, 'db', trackProgram);
 
     await openEditDialog(page, programB);
 
@@ -209,27 +224,22 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(paddedName);
     await page.getByLabel('Description').fill('Trim test');
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
 
     await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
     await expect(page.getByText(baseName)).toBeVisible();
   });
 
-  test('TC-014: Reusing a deleted program name succeeds', async ({ page }) => {
+  test('TC-014: Reusing a deleted program name succeeds', async ({ page, trackProgram }) => {
     const programName = `Reuse ${Date.now()}`;
-    await createProgram(page, programName, 'Will be deleted');
+    await createProgram(page, programName, 'Will be deleted', trackProgram);
 
     page.on('dialog', async (d) => { await d.accept(); });
 
     await deleteProgram(page, programName);
     await expect(page.getByRole('row').filter({ hasText: programName })).toHaveCount(0);
 
-    await page.getByRole('button', { name: '+ New Program' }).click();
-    await page.getByLabel('Program Name').fill(programName);
-    await page.getByLabel('Description').fill('Reused after delete');
-    await page.getByRole('button', { name: 'Create' }).click();
-
-    await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
+    await createProgram(page, programName, 'Reused after delete', trackProgram);
     await expect(page.getByText(programName)).toBeVisible();
   });
 });

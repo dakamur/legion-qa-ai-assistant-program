@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/cleanup.fixture';
 
 const BASE_URL = process.env.DIDAXIS_URL ?? 'https://test.didaxis.studio';
 
@@ -15,13 +15,33 @@ async function navigateToPrograms(page: import('@playwright/test').Page) {
   await expect(page.getByRole('button', { name: '+ New Program' })).toBeVisible();
 }
 
-async function createProgram(page: import('@playwright/test').Page, name: string, description: string) {
+function modalCreateButton(page: import('@playwright/test').Page) {
+  return page.getByRole('dialog', { name: 'New Program' }).getByRole('button', { name: 'Create', exact: true });
+}
+
+async function createProgram(
+  page: import('@playwright/test').Page,
+  name: string,
+  description: string,
+  trackFn: (uuid: string) => void,
+) {
+  const responsePromise = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.url().includes('/api/programs'),
+  );
   await page.getByRole('button', { name: '+ New Program' }).click();
   await page.getByLabel('Program Name').fill(name);
   await page.getByLabel('Description').fill(description);
-  await page.getByRole('button', { name: 'Create' }).click();
+  await modalCreateButton(page).click();
   await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
   await expect(page.getByText(name)).toBeVisible();
+  const res = await responsePromise;
+  if (res.ok()) {
+    try {
+      const body = await res.json();
+      const id = body?.data?.id ?? body?.id;
+      if (id) trackFn(id);
+    } catch { /* non-JSON response */ }
+  }
 }
 
 function openEditDialog(page: import('@playwright/test').Page, programName: string) {
@@ -35,10 +55,10 @@ test.describe('DS-2: Edit Program', () => {
     await navigateToPrograms(page);
   });
 
-  test('TC-001: Edit form opens pre-populated with current program data', async ({ page }) => {
+  test('TC-001: Edit form opens pre-populated with current program data', async ({ page, trackProgram }) => {
     const programName = `EditPrepop ${Date.now()}`;
     const description = 'Pre-populated check';
-    await createProgram(page, programName, description);
+    await createProgram(page, programName, description, trackProgram);
 
     await openEditDialog(page, programName);
 
@@ -48,10 +68,10 @@ test.describe('DS-2: Edit Program', () => {
     await expect(dialog.getByLabel('Description')).toHaveValue(description);
   });
 
-  test('TC-002: Program name is updated successfully', async ({ page }) => {
+  test('TC-002: Program name is updated successfully', async ({ page, trackProgram }) => {
     const originalName = `EditName ${Date.now()}`;
     const updatedName = `${originalName} - Updated`;
-    await createProgram(page, originalName, 'Original description');
+    await createProgram(page, originalName, 'Original description', trackProgram);
 
     await openEditDialog(page, originalName);
 
@@ -64,10 +84,10 @@ test.describe('DS-2: Edit Program', () => {
     await expect(page.getByText(updatedName)).toBeVisible();
   });
 
-  test('TC-003: Program description is updated successfully', async ({ page }) => {
+  test('TC-003: Program description is updated successfully', async ({ page, trackProgram }) => {
     const programName = `EditDesc ${Date.now()}`;
     const updatedDescription = 'Updated description for testing';
-    await createProgram(page, programName, 'Original description');
+    await createProgram(page, programName, 'Original description', trackProgram);
 
     await openEditDialog(page, programName);
 
@@ -83,11 +103,11 @@ test.describe('DS-2: Edit Program', () => {
     await expect(dialog.getByLabel('Description')).toHaveValue(updatedDescription);
   });
 
-  test('TC-004: Editing only Description preserves the Name', async ({ page }) => {
+  test('TC-004: Editing only Description preserves the Name', async ({ page, trackProgram }) => {
     const programName = `PreserveN ${Date.now()}`;
     const originalDesc = 'Original desc';
     const updatedDesc = 'Preservation test description';
-    await createProgram(page, programName, originalDesc);
+    await createProgram(page, programName, originalDesc, trackProgram);
 
     await openEditDialog(page, programName);
 
@@ -102,11 +122,11 @@ test.describe('DS-2: Edit Program', () => {
     await expect(dialog.getByLabel('Description')).toHaveValue(updatedDesc);
   });
 
-  test('TC-005: Editing only Name preserves the Description', async ({ page }) => {
+  test('TC-005: Editing only Name preserves the Description', async ({ page, trackProgram }) => {
     const originalName = `PreserveD ${Date.now()}`;
     const updatedName = `${originalName} Renamed`;
     const description = 'Should stay intact';
-    await createProgram(page, originalName, description);
+    await createProgram(page, originalName, description, trackProgram);
 
     await openEditDialog(page, originalName);
 
@@ -121,9 +141,9 @@ test.describe('DS-2: Edit Program', () => {
     await expect(dialog.getByLabel('Description')).toHaveValue(description);
   });
 
-  test('TC-006: Save is blocked when Program Name is cleared to empty', async ({ page }) => {
+  test('TC-006: Save is blocked when Program Name is cleared to empty', async ({ page, trackProgram }) => {
     const programName = `EmptyName ${Date.now()}`;
-    await createProgram(page, programName, 'Some description');
+    await createProgram(page, programName, 'Some description', trackProgram);
 
     await openEditDialog(page, programName);
 
@@ -133,9 +153,9 @@ test.describe('DS-2: Edit Program', () => {
     await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
-  test('TC-007: Whitespace-only Program Name is treated as empty', async ({ page }) => {
+  test('TC-007: Whitespace-only Program Name is treated as empty', async ({ page, trackProgram }) => {
     const programName = `WsName ${Date.now()}`;
-    await createProgram(page, programName, 'Some description');
+    await createProgram(page, programName, 'Some description', trackProgram);
 
     await openEditDialog(page, programName);
 
@@ -147,11 +167,11 @@ test.describe('DS-2: Edit Program', () => {
   });
 
   // BUG: App allows duplicate program names — no uniqueness validation exists on edit
-  test.fail('TC-008: Editing to a duplicate Program Name is rejected', async ({ page }) => {
+  test.fail('TC-008: Editing to a duplicate Program Name is rejected', async ({ page, trackProgram }) => {
     const programA = `ProgA-${Date.now()}`;
     const programB = `ProgB-${Date.now()}`;
-    await createProgram(page, programA, 'da');
-    await createProgram(page, programB, 'db');
+    await createProgram(page, programA, 'da', trackProgram);
+    await createProgram(page, programB, 'db', trackProgram);
 
     await openEditDialog(page, programB);
 
@@ -163,10 +183,10 @@ test.describe('DS-2: Edit Program', () => {
     await expect(dialog).toBeVisible();
   });
 
-  test('TC-009: Cancelling the edit form discards all changes', async ({ page }) => {
+  test('TC-009: Cancelling the edit form discards all changes', async ({ page, trackProgram }) => {
     const programName = `CancelTest ${Date.now()}`;
     const description = 'Original cancel desc';
-    await createProgram(page, programName, description);
+    await createProgram(page, programName, description, trackProgram);
 
     await openEditDialog(page, programName);
 
@@ -189,10 +209,10 @@ test.describe('DS-2: Edit Program', () => {
     // Requires non-admin credentials which are not available in the current env
   });
 
-  test('TC-011: Saving with no changes does not cause errors', async ({ page }) => {
+  test('TC-011: Saving with no changes does not cause errors', async ({ page, trackProgram }) => {
     const programName = `NoChange ${Date.now()}`;
     const description = 'Unchanged desc';
-    await createProgram(page, programName, description);
+    await createProgram(page, programName, description, trackProgram);
 
     await openEditDialog(page, programName);
 
@@ -203,10 +223,10 @@ test.describe('DS-2: Edit Program', () => {
     await expect(page.getByText(programName)).toBeVisible();
   });
 
-  test('TC-012: Edited Program Name with special characters is handled safely', async ({ page }) => {
+  test('TC-012: Edited Program Name with special characters is handled safely', async ({ page, trackProgram }) => {
     const programName = `SpecChar ${Date.now()}`;
     const specialName = `Web Dev & AI / 2026 - Cohort #1 ${Date.now()}`;
-    await createProgram(page, programName, 'Special char test');
+    await createProgram(page, programName, 'Special char test', trackProgram);
 
     await openEditDialog(page, programName);
 
@@ -219,10 +239,10 @@ test.describe('DS-2: Edit Program', () => {
     await expect(page.getByText(specialName)).toBeVisible();
   });
 
-  test('TC-013: Script-like input is stored as text and not executed', async ({ page }) => {
+  test('TC-013: Script-like input is stored as text and not executed', async ({ page, trackProgram }) => {
     const programName = `XssEdit ${Date.now()}`;
     const xssPayload = `<script>alert('x')</script> ${Date.now()}`;
-    await createProgram(page, programName, 'XSS test');
+    await createProgram(page, programName, 'XSS test', trackProgram);
 
     let dialogFired = false;
     page.on('dialog', () => { dialogFired = true; });
@@ -241,11 +261,11 @@ test.describe('DS-2: Edit Program', () => {
     expect(dialogFired).toBe(false);
   });
 
-  test('TC-014: Program Name maximum length boundary is enforced on edit', async ({ page }) => {
+  test('TC-014: Program Name maximum length boundary is enforced on edit', async ({ page, trackProgram }) => {
     test.setTimeout(60000);
     const programName = `MaxLen ${Date.now()}`;
     const maxName = `Max ${Date.now()} ${'a'.repeat(240)}`.slice(0, 255);
-    await createProgram(page, programName, 'Max boundary test');
+    await createProgram(page, programName, 'Max boundary test', trackProgram);
 
     await openEditDialog(page, programName);
 
@@ -259,10 +279,10 @@ test.describe('DS-2: Edit Program', () => {
   });
 
   // BUG: App accepts names beyond 255 chars on edit — no max-length validation exists
-  test.fail('TC-015: Program Name beyond maximum length is rejected on edit', async ({ page }) => {
+  test.fail('TC-015: Program Name beyond maximum length is rejected on edit', async ({ page, trackProgram }) => {
     const programName = `OverLen ${Date.now()}`;
     const overflowName = 'a'.repeat(256);
-    await createProgram(page, programName, 'Overflow test');
+    await createProgram(page, programName, 'Overflow test', trackProgram);
 
     await openEditDialog(page, programName);
 
@@ -274,10 +294,10 @@ test.describe('DS-2: Edit Program', () => {
   });
 
   // BUG: Double-click Save applies duplicate updates — no submission guard exists
-  test.fail('TC-016: Double-clicking Save does not create duplicate updates', async ({ page }) => {
+  test.fail('TC-016: Double-clicking Save does not create duplicate updates', async ({ page, trackProgram }) => {
     const programName = `DblSave ${Date.now()}`;
     const updatedName = `DblSave Updated ${Date.now()}`;
-    await createProgram(page, programName, 'Double save test');
+    await createProgram(page, programName, 'Double save test', trackProgram);
 
     await openEditDialog(page, programName);
 
@@ -291,10 +311,10 @@ test.describe('DS-2: Edit Program', () => {
     await expect(rows).toHaveCount(1);
   });
 
-  test('TC-017: Edit form reflects latest data after a previous edit', async ({ page }) => {
+  test('TC-017: Edit form reflects latest data after a previous edit', async ({ page, trackProgram }) => {
     const programName = `Stale ${Date.now()}`;
     const firstUpdate = `${programName} v2`;
-    await createProgram(page, programName, 'First version');
+    await createProgram(page, programName, 'First version', trackProgram);
 
     await openEditDialog(page, programName);
     const dialog = page.getByRole('dialog', { name: 'Edit Program' });

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures/cleanup.fixture';
 
 const BASE_URL = process.env.DIDAXIS_URL ?? 'https://test.didaxis.studio';
 
@@ -17,7 +17,15 @@ async function navigateToPrograms(page: Page) {
   await expect(page.getByRole('button', { name: '+ New Program' })).toBeVisible();
 }
 
-async function createProgram(page: Page, name: string, description: string) {
+async function createProgram(
+  page: Page,
+  name: string,
+  description: string,
+  trackFn: (uuid: string) => void,
+) {
+  const responsePromise = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.url().includes('/api/programs'),
+  );
   await page.getByRole('button', { name: '+ New Program' }).click();
   await page.getByLabel('Program Name').fill(name);
   if (description) {
@@ -25,6 +33,14 @@ async function createProgram(page: Page, name: string, description: string) {
   }
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
+  const res = await responsePromise;
+  if (res.ok()) {
+    try {
+      const body = await res.json();
+      const id = body?.data?.id ?? body?.id;
+      if (id) trackFn(id);
+    } catch { /* non-JSON response */ }
+  }
 }
 
 test.describe('DS-5: Program List Display', () => {
@@ -35,7 +51,7 @@ test.describe('DS-5: Program List Display', () => {
 
   // --- Positive Flows ---
 
-  test('TC-001: Programs page displays each program with name and description', async ({ page }) => {
+  test('TC-001: Programs page displays each program with name and description', async ({ page, trackProgram }) => {
     test.slow();
     const suffix = Date.now();
     const programs = [
@@ -45,7 +61,7 @@ test.describe('DS-5: Program List Display', () => {
     ];
 
     for (const p of programs) {
-      await createProgram(page, p.name, p.desc);
+      await createProgram(page, p.name, p.desc, trackProgram);
     }
 
     await expect(page.getByRole('table')).toBeVisible();
@@ -61,12 +77,12 @@ test.describe('DS-5: Program List Display', () => {
     // Requires 0 programs in the system — destructive to shared test environment
   });
 
-  test('TC-003: Program details are correctly mapped per row', async ({ page }) => {
+  test('TC-003: Program details are correctly mapped per row', async ({ page, trackProgram }) => {
     const suffix = Date.now();
     const programA = { name: `Security Essentials ${suffix}`, desc: 'Security policy and awareness' };
     const programB = { name: `Data Literacy ${suffix}`, desc: 'Intro to metrics and dashboards' };
-    await createProgram(page, programA.name, programA.desc);
-    await createProgram(page, programB.name, programB.desc);
+    await createProgram(page, programA.name, programA.desc, trackProgram);
+    await createProgram(page, programB.name, programB.desc, trackProgram);
 
     const rowA = page.getByRole('row').filter({ hasText: programA.name });
     await expect(rowA.getByText(programA.desc)).toBeVisible();
@@ -79,17 +95,17 @@ test.describe('DS-5: Program List Display', () => {
 
   // --- Negative Flows ---
 
-  test('TC-004: Empty-state UI does not appear when program exists', async ({ page }) => {
+  test('TC-004: Empty-state UI does not appear when program exists', async ({ page, trackProgram }) => {
     const programName = `No Empty State ${Date.now()}`;
-    await createProgram(page, programName, 'Should prevent empty state');
+    await createProgram(page, programName, 'Should prevent empty state', trackProgram);
 
     await expect(page.getByRole('row').filter({ hasText: programName })).toBeVisible();
     await expect(page.getByRole('table')).toBeVisible();
   });
 
-  test('TC-005: Program list does not show raw null/undefined values', async ({ page }) => {
+  test('TC-005: Program list does not show raw null/undefined values', async ({ page, trackProgram }) => {
     const programName = `Data Governance ${Date.now()}`;
-    await createProgram(page, programName, '');
+    await createProgram(page, programName, '', trackProgram);
 
     const row = page.getByRole('row').filter({ hasText: programName });
     await expect(row).toBeVisible();
@@ -98,7 +114,7 @@ test.describe('DS-5: Program List Display', () => {
     await expect(row.getByText('[object Object]', { exact: true })).not.toBeVisible();
   });
 
-  test('TC-006: Program list does not execute HTML/JS from name or description', async ({ page }) => {
+  test('TC-006: Program list does not execute HTML/JS from name or description', async ({ page, trackProgram }) => {
     const suffix = Date.now();
     const xssName = `<script>alert('x')</script> Security ${suffix}`;
     const xssDesc = `<b>Bold</b> and <img src=x onerror=alert(1)>`;
@@ -106,19 +122,19 @@ test.describe('DS-5: Program List Display', () => {
     let dialogFired = false;
     page.on('dialog', () => { dialogFired = true; });
 
-    await createProgram(page, xssName, xssDesc);
+    await createProgram(page, xssName, xssDesc, trackProgram);
 
     const row = page.getByRole('row').filter({ hasText: suffix.toString() });
     await expect(row).toBeVisible();
     expect(dialogFired).toBe(false);
   });
 
-  test('TC-007: Program list does not duplicate entries after navigation', async ({ page }) => {
+  test('TC-007: Program list does not duplicate entries after navigation', async ({ page, trackProgram }) => {
     const suffix = Date.now();
     const programA = `Nav DupA ${suffix}`;
     const programB = `Nav DupB ${suffix}`;
-    await createProgram(page, programA, 'Leadership Track');
-    await createProgram(page, programB, 'Compliance Basics');
+    await createProgram(page, programA, 'Leadership Track', trackProgram);
+    await createProgram(page, programB, 'Compliance Basics', trackProgram);
 
     const countBefore = await page.getByRole('row').filter({ hasText: suffix.toString() }).count();
 
@@ -138,9 +154,9 @@ test.describe('DS-5: Program List Display', () => {
 
   // --- Edge Cases ---
 
-  test('TC-008: Program with empty description displays gracefully', async ({ page }) => {
+  test('TC-008: Program with empty description displays gracefully', async ({ page, trackProgram }) => {
     const programName = `Empty Desc Display ${Date.now()}`;
-    await createProgram(page, programName, '');
+    await createProgram(page, programName, '', trackProgram);
 
     const row = page.getByRole('row').filter({ hasText: programName });
     await expect(row).toBeVisible();
@@ -149,21 +165,21 @@ test.describe('DS-5: Program List Display', () => {
     await expect(cells.first()).toBeVisible();
   });
 
-  test('TC-009: Special characters and Unicode display correctly', async ({ page }) => {
+  test('TC-009: Special characters and Unicode display correctly', async ({ page, trackProgram }) => {
     const suffix = Date.now();
     const programName = `R&D / QA - Café #1 ${suffix}`;
     const description = 'Supports symbols: % & / ? + = and non-Latin: 日本語, العربية';
-    await createProgram(page, programName, description);
+    await createProgram(page, programName, description, trackProgram);
 
     const row = page.getByRole('row').filter({ hasText: programName });
     await expect(row).toBeVisible();
     await expect(row.getByText(description)).toBeVisible();
   });
 
-  test('TC-010: Max-length name and description render without page crash', async ({ page }) => {
+  test('TC-010: Max-length name and description render without page crash', async ({ page, trackProgram }) => {
     const programName = `MaxDisplay ${Date.now()} ${'a'.repeat(230)}`.slice(0, 255);
     const longDescription = 'word '.repeat(400);
-    await createProgram(page, programName, longDescription);
+    await createProgram(page, programName, longDescription, trackProgram);
 
     const row = page.getByRole('row').filter({ hasText: programName.slice(0, 50) });
     await expect(row).toBeVisible();
@@ -173,13 +189,13 @@ test.describe('DS-5: Program List Display', () => {
     expect(await otherRows.count()).toBeGreaterThan(1);
   });
 
-  test('TC-011: Duplicate program names are distinguishable via description', async ({ page }) => {
+  test('TC-011: Duplicate program names are distinguishable via description', async ({ page, trackProgram }) => {
     const suffix = Date.now();
     const programName = `Onboarding ${suffix}`;
     const descA = `North America cohort ${suffix}`;
     const descB = `EMEA cohort ${suffix}`;
-    await createProgram(page, programName, descA);
-    await createProgram(page, programName, descB);
+    await createProgram(page, programName, descA, trackProgram);
+    await createProgram(page, programName, descB, trackProgram);
 
     const rows = page.getByRole('row').filter({ hasText: programName });
     await expect(rows).toHaveCount(2);

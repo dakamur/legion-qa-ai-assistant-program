@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/cleanup.fixture';
 
 const BASE_URL = process.env.DIDAXIS_URL ?? 'https://test.didaxis.studio';
 
@@ -15,13 +15,33 @@ async function navigateToPrograms(page: import('@playwright/test').Page) {
   await expect(page.getByRole('button', { name: '+ New Program' })).toBeVisible();
 }
 
-async function createProgram(page: import('@playwright/test').Page, name: string, description: string) {
+function modalCreateButton(page: import('@playwright/test').Page) {
+  return page.getByRole('dialog', { name: 'New Program' }).getByRole('button', { name: 'Create', exact: true });
+}
+
+async function createProgram(
+  page: import('@playwright/test').Page,
+  name: string,
+  description: string,
+  trackFn: (uuid: string) => void,
+) {
+  const responsePromise = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.url().includes('/api/programs'),
+  );
   await page.getByRole('button', { name: '+ New Program' }).click();
   await page.getByLabel('Program Name').fill(name);
   await page.getByLabel('Description').fill(description);
-  await page.getByRole('button', { name: 'Create' }).click();
+  await modalCreateButton(page).click();
   await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
   await expect(page.getByText(name)).toBeVisible();
+  const res = await responsePromise;
+  if (res.ok()) {
+    try {
+      const body = await res.json();
+      const id = body?.data?.id ?? body?.id;
+      if (id) trackFn(id);
+    } catch { /* non-JSON response */ }
+  }
 }
 
 function openEditDialog(page: import('@playwright/test').Page, programName: string) {
@@ -39,11 +59,11 @@ test.describe('DS-5: Program List Display', () => {
     await login(page);
   });
 
-  test('TC-001: Programs page displays a list showing each program name and description', async ({ page }) => {
+  test('TC-001: Programs page displays a list showing each program name and description', async ({ page, trackProgram }) => {
     const programName = `ListDisplay ${Date.now()}`;
     const description = 'Visible in list';
     await navigateToPrograms(page);
-    await createProgram(page, programName, description);
+    await createProgram(page, programName, description, trackProgram);
 
     await expect(page.getByRole('table')).toBeVisible();
     const row = page.getByRole('row').filter({ hasText: programName });
@@ -52,46 +72,57 @@ test.describe('DS-5: Program List Display', () => {
     await expect(row.getByText(description)).toBeVisible();
   });
 
-  test('TC-002: Multiple programs are all displayed in the list', async ({ page }) => {
+  test('TC-002: Multiple programs are all displayed in the list', async ({ page, trackProgram }) => {
     await navigateToPrograms(page);
 
     const programA = `MultiA ${Date.now()}`;
     const programB = `MultiB ${Date.now()}`;
     const programC = `MultiC ${Date.now()}`;
-    await createProgram(page, programA, 'ma');
-    await createProgram(page, programB, 'mb');
-    await createProgram(page, programC, 'mc');
+    await createProgram(page, programA, 'ma', trackProgram);
+    await createProgram(page, programB, 'mb', trackProgram);
+    await createProgram(page, programC, 'mc', trackProgram);
 
     await expect(page.getByRole('row').filter({ hasText: programA })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('row').filter({ hasText: programB })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('row').filter({ hasText: programC })).toBeVisible({ timeout: 10000 });
   });
 
-  test('TC-003: Newly created program appears in the list immediately', async ({ page }) => {
+  test('TC-003: Newly created program appears in the list immediately', async ({ page, trackProgram }) => {
     await navigateToPrograms(page);
 
     const programName = `Immediate ${Date.now()}`;
     const description = 'Should appear instantly';
 
+    const responsePromise = page.waitForResponse(
+      (r) => r.request().method() === 'POST' && r.url().includes('/api/programs'),
+    );
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(programName);
     await page.getByLabel('Description').fill(description);
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
 
     await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
 
     const row = page.getByRole('row').filter({ hasText: programName });
     await expect(row).toBeVisible();
     await expect(row.getByText(description)).toBeVisible();
+    const res = await responsePromise;
+    if (res.ok()) {
+      try {
+        const body = await res.json();
+        const id = body?.data?.id ?? body?.id;
+        if (id) trackProgram(id);
+      } catch { /* non-JSON response */ }
+    }
   });
 
-  test('TC-004: Program list shows correct data after an edit', async ({ page }) => {
+  test('TC-004: Program list shows correct data after an edit', async ({ page, trackProgram }) => {
     await navigateToPrograms(page);
 
     const programName = `EditRefresh ${Date.now()}`;
     const updatedName = `${programName} - Updated`;
     const updatedDesc = 'Updated for list test';
-    await createProgram(page, programName, 'Original desc');
+    await createProgram(page, programName, 'Original desc', trackProgram);
 
     await openEditDialog(page, programName);
     const dialog = page.getByRole('dialog', { name: 'Edit Program' });
@@ -108,14 +139,14 @@ test.describe('DS-5: Program List Display', () => {
     await expect(page.getByRole('row').filter({ hasText: programName }).filter({ hasNotText: updatedName })).toHaveCount(0);
   });
 
-  test('TC-005: Program list updates correctly after a deletion', async ({ page }) => {
+  test('TC-005: Program list updates correctly after a deletion', async ({ page, trackProgram }) => {
     test.setTimeout(60000);
     await navigateToPrograms(page);
 
     const programA = `DelListA ${Date.now()}`;
     const programB = `DelListB ${Date.now()}`;
-    await createProgram(page, programA, 'to delete');
-    await createProgram(page, programB, 'to keep');
+    await createProgram(page, programA, 'to delete', trackProgram);
+    await createProgram(page, programB, 'to keep', trackProgram);
 
     page.on('dialog', async (d) => { await d.accept(); });
 
@@ -143,11 +174,11 @@ test.describe('DS-5: Program List Display', () => {
     // Requires non-admin credentials which are not available in the current env
   });
 
-  test('TC-009: Program with a very long name displays without breaking the layout', async ({ page }) => {
+  test('TC-009: Program with a very long name displays without breaking the layout', async ({ page, trackProgram }) => {
     await navigateToPrograms(page);
 
     const longName = `LongDisplay ${Date.now()} ${'x'.repeat(200)}`.slice(0, 250);
-    await createProgram(page, longName, 'Long name layout test');
+    await createProgram(page, longName, 'Long name layout test', trackProgram);
 
     const row = page.getByRole('row').filter({ hasText: longName.slice(0, 50) });
     await expect(row).toBeVisible();
@@ -158,12 +189,12 @@ test.describe('DS-5: Program List Display', () => {
     expect(tableBB!.width).toBeGreaterThan(0);
   });
 
-  test('TC-010: Program with a very long description displays without breaking the layout', async ({ page }) => {
+  test('TC-010: Program with a very long description displays without breaking the layout', async ({ page, trackProgram }) => {
     await navigateToPrograms(page);
 
     const programName = `LongDesc ${Date.now()}`;
     const longDesc = 'D'.repeat(500);
-    await createProgram(page, programName, longDesc);
+    await createProgram(page, programName, longDesc, trackProgram);
 
     const row = page.getByRole('row').filter({ hasText: programName });
     await expect(row).toBeVisible();
@@ -174,14 +205,17 @@ test.describe('DS-5: Program List Display', () => {
     expect(tableBB!.width).toBeGreaterThan(0);
   });
 
-  test('TC-011: Program with empty description displays correctly', async ({ page }) => {
+  test('TC-011: Program with empty description displays correctly', async ({ page, trackProgram }) => {
     await navigateToPrograms(page);
 
     const programName = `NoDesc ${Date.now()}`;
 
+    const responsePromise = page.waitForResponse(
+      (r) => r.request().method() === 'POST' && r.url().includes('/api/programs'),
+    );
     await page.getByRole('button', { name: '+ New Program' }).click();
     await page.getByLabel('Program Name').fill(programName);
-    await page.getByRole('button', { name: 'Create' }).click();
+    await modalCreateButton(page).click();
     await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
 
     const row = page.getByRole('row').filter({ hasText: programName });
@@ -191,14 +225,22 @@ test.describe('DS-5: Program List Display', () => {
     const tableBB = await table.boundingBox();
     expect(tableBB).not.toBeNull();
     expect(tableBB!.width).toBeGreaterThan(0);
+    const res = await responsePromise;
+    if (res.ok()) {
+      try {
+        const body = await res.json();
+        const id = body?.data?.id ?? body?.id;
+        if (id) trackProgram(id);
+      } catch { /* non-JSON response */ }
+    }
   });
 
-  test('TC-012: Program with special characters in name and description displays correctly', async ({ page }) => {
+  test('TC-012: Program with special characters in name and description displays correctly', async ({ page, trackProgram }) => {
     await navigateToPrograms(page);
 
     const programName = `Informatique & IA — "Niveau 2" <2026> ${Date.now()}`;
     const description = `Côte d'Ivoire & beyond — spécial`;
-    await createProgram(page, programName, description);
+    await createProgram(page, programName, description, trackProgram);
 
     const row = page.getByRole('row').filter({ hasText: programName });
     await expect(row).toBeVisible();
@@ -227,11 +269,11 @@ test.describe('DS-5: Program List Display', () => {
     await expect(page.getByRole('table')).toBeVisible();
   });
 
-  test('TC-015: Each program row shows edit and delete action icons', async ({ page }) => {
+  test('TC-015: Each program row shows edit and delete action icons', async ({ page, trackProgram }) => {
     await navigateToPrograms(page);
 
     const programName = `ActionIcons ${Date.now()}`;
-    await createProgram(page, programName, 'Icon check');
+    await createProgram(page, programName, 'Icon check', trackProgram);
 
     const row = page.getByRole('row').filter({ hasText: programName });
     await expect(row.getByRole('button', { name: '✏️' })).toBeVisible();

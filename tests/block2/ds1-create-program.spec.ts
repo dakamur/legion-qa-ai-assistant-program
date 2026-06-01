@@ -1,16 +1,9 @@
-import { test, expect } from '../fixtures/cleanup.fixture';
+import { test, expect } from '../../fixtures/cleanup.fixture';
 
 const BASE_URL = process.env.DIDAXIS_URL ?? 'https://test.didaxis.studio';
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto(`${BASE_URL}/login`);
-  await page.getByLabel('Email').fill(process.env.DIDAXIS_EMAIL!);
-  await page.getByLabel('Password').fill(process.env.DIDAXIS_PASSWORD!);
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
-}
-
 async function navigateToPrograms(page: import('@playwright/test').Page) {
+  await page.goto(BASE_URL);
   await page.getByRole('button', { name: '🎓 Programs' }).click();
   await expect(page.getByRole('button', { name: '+ New Program' })).toBeVisible();
 }
@@ -41,7 +34,6 @@ async function createProgram(
 
 test.describe('DS-1: Create Program', () => {
   test.beforeEach(async ({ page }) => {
-    await login(page);
     await navigateToPrograms(page);
   });
 

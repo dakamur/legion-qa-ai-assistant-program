@@ -1,208 +1,155 @@
 import { test, expect } from '../../fixtures/cleanup.fixture';
-
-const BASE_URL = process.env.DIDAXIS_URL ?? 'https://test.didaxis.studio';
-
-async function login(page: import('@playwright/test').Page) {
-  await page.goto(`${BASE_URL}/login`);
-  await page.getByLabel('Email').fill(process.env.DIDAXIS_EMAIL!);
-  await page.getByLabel('Password').fill(process.env.DIDAXIS_PASSWORD!);
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
-}
-
-async function navigateToPrograms(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: '🎓 Programs' }).click();
-  await expect(page.getByRole('button', { name: '+ New Program' })).toBeVisible();
-}
-
-function modalCreateButton(page: import('@playwright/test').Page) {
-  return page.getByRole('dialog', { name: 'New Program' }).getByRole('button', { name: 'Create', exact: true });
-}
-
-async function createProgram(
-  page: import('@playwright/test').Page,
-  name: string,
-  description: string,
-  trackFn: (uuid: string) => void,
-) {
-  const responsePromise = page.waitForResponse(
-    (r) => r.request().method() === 'POST' && r.url().includes('/api/programs'),
-  );
-  await page.getByRole('button', { name: '+ New Program' }).click();
-  await page.getByLabel('Program Name').fill(name);
-  await page.getByLabel('Description').fill(description);
-  await modalCreateButton(page).click();
-  await expect(page.getByRole('dialog', { name: 'New Program' })).not.toBeVisible();
-  await expect(page.getByText(name)).toBeVisible();
-  const res = await responsePromise;
-  if (res.ok()) {
-    try {
-      const body = await res.json();
-      const id = body?.data?.id ?? body?.id;
-      if (id) trackFn(id);
-    } catch { /* non-JSON response */ }
-  }
-}
-
-function openEditDialog(page: import('@playwright/test').Page, programName: string) {
-  const row = page.getByRole('row').filter({ hasText: programName });
-  return row.getByRole('button', { name: '✏️' }).click();
-}
+import { ProgramsPage } from '../../pages/programs.page';
+import { createProgram } from '../../helpers/program.helpers';
 
 test.describe('DS-2: Edit Program', () => {
+  let programs: ProgramsPage;
+
   test.beforeEach(async ({ page }) => {
-    await login(page);
-    await navigateToPrograms(page);
+    programs = new ProgramsPage(page);
+    await programs.goto();
   });
 
   test('TC-001: Edit form opens pre-populated with current program data', async ({ page, trackProgram }) => {
     const programName = `EditPrepop ${Date.now()}`;
     const description = 'Pre-populated check';
-    await createProgram(page, programName, description, trackProgram);
+    await createProgram(programs, page, programName, description, trackProgram);
 
-    await openEditDialog(page, programName);
+    await programs.openEditFor(programName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByLabel('Program Name')).toHaveValue(programName);
-    await expect(dialog.getByLabel('Description')).toHaveValue(description);
+    const modal = programs.editProgramModal;
+    await expect(modal.dialog).toBeVisible();
+    await expect(modal.programNameInput).toHaveValue(programName);
+    await expect(modal.descriptionInput).toHaveValue(description);
   });
 
   test('TC-002: Program name is updated successfully', async ({ page, trackProgram }) => {
     const originalName = `EditName ${Date.now()}`;
     const updatedName = `${originalName} - Updated`;
-    await createProgram(page, originalName, 'Original description', trackProgram);
+    await createProgram(programs, page, originalName, 'Original description', trackProgram);
 
-    await openEditDialog(page, originalName);
+    await programs.openEditFor(originalName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Program Name').clear();
-    await dialog.getByLabel('Program Name').fill(updatedName);
-    await dialog.getByRole('button', { name: 'Save' }).click();
+    const modal = programs.editProgramModal;
+    await modal.fillName(updatedName);
+    await modal.submit();
 
-    await expect(dialog).not.toBeVisible();
+    await expect(modal.dialog).not.toBeVisible();
     await expect(page.getByText(updatedName)).toBeVisible();
   });
 
   test('TC-003: Program description is updated successfully', async ({ page, trackProgram }) => {
     const programName = `EditDesc ${Date.now()}`;
     const updatedDescription = 'Updated description for testing';
-    await createProgram(page, programName, 'Original description', trackProgram);
+    await createProgram(programs, page, programName, 'Original description', trackProgram);
 
-    await openEditDialog(page, programName);
+    await programs.openEditFor(programName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Description').clear();
-    await dialog.getByLabel('Description').fill(updatedDescription);
-    await dialog.getByRole('button', { name: 'Save' }).click();
+    const modal = programs.editProgramModal;
+    await modal.fillDescription(updatedDescription);
+    await modal.submit();
 
-    await expect(dialog).not.toBeVisible();
+    await expect(modal.dialog).not.toBeVisible();
 
-    await openEditDialog(page, programName);
-    await expect(dialog.getByLabel('Program Name')).toHaveValue(programName);
-    await expect(dialog.getByLabel('Description')).toHaveValue(updatedDescription);
+    await programs.openEditFor(programName);
+    await expect(modal.programNameInput).toHaveValue(programName);
+    await expect(modal.descriptionInput).toHaveValue(updatedDescription);
   });
 
   test('TC-004: Editing only Description preserves the Name', async ({ page, trackProgram }) => {
     const programName = `PreserveN ${Date.now()}`;
     const originalDesc = 'Original desc';
     const updatedDesc = 'Preservation test description';
-    await createProgram(page, programName, originalDesc, trackProgram);
+    await createProgram(programs, page, programName, originalDesc, trackProgram);
 
-    await openEditDialog(page, programName);
+    await programs.openEditFor(programName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Description').clear();
-    await dialog.getByLabel('Description').fill(updatedDesc);
-    await dialog.getByRole('button', { name: 'Save' }).click();
-    await expect(dialog).not.toBeVisible();
+    const modal = programs.editProgramModal;
+    await modal.fillDescription(updatedDesc);
+    await modal.submit();
+    await expect(modal.dialog).not.toBeVisible();
 
-    await openEditDialog(page, programName);
-    await expect(dialog.getByLabel('Program Name')).toHaveValue(programName);
-    await expect(dialog.getByLabel('Description')).toHaveValue(updatedDesc);
+    await programs.openEditFor(programName);
+    await expect(modal.programNameInput).toHaveValue(programName);
+    await expect(modal.descriptionInput).toHaveValue(updatedDesc);
   });
 
   test('TC-005: Editing only Name preserves the Description', async ({ page, trackProgram }) => {
     const originalName = `PreserveD ${Date.now()}`;
     const updatedName = `${originalName} Renamed`;
     const description = 'Should stay intact';
-    await createProgram(page, originalName, description, trackProgram);
+    await createProgram(programs, page, originalName, description, trackProgram);
 
-    await openEditDialog(page, originalName);
+    await programs.openEditFor(originalName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Program Name').clear();
-    await dialog.getByLabel('Program Name').fill(updatedName);
-    await dialog.getByRole('button', { name: 'Save' }).click();
-    await expect(dialog).not.toBeVisible();
+    const modal = programs.editProgramModal;
+    await modal.fillName(updatedName);
+    await modal.submit();
+    await expect(modal.dialog).not.toBeVisible();
 
-    await openEditDialog(page, updatedName);
-    await expect(dialog.getByLabel('Program Name')).toHaveValue(updatedName);
-    await expect(dialog.getByLabel('Description')).toHaveValue(description);
+    await programs.openEditFor(updatedName);
+    await expect(modal.programNameInput).toHaveValue(updatedName);
+    await expect(modal.descriptionInput).toHaveValue(description);
   });
 
   test('TC-006: Save is blocked when Program Name is cleared to empty', async ({ page, trackProgram }) => {
     const programName = `EmptyName ${Date.now()}`;
-    await createProgram(page, programName, 'Some description', trackProgram);
+    await createProgram(programs, page, programName, 'Some description', trackProgram);
 
-    await openEditDialog(page, programName);
+    await programs.openEditFor(programName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Program Name').clear();
+    const modal = programs.editProgramModal;
+    await modal.clearName();
 
-    await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await expect(modal.saveButton).toBeDisabled();
   });
 
   test('TC-007: Whitespace-only Program Name is treated as empty', async ({ page, trackProgram }) => {
     const programName = `WsName ${Date.now()}`;
-    await createProgram(page, programName, 'Some description', trackProgram);
+    await createProgram(programs, page, programName, 'Some description', trackProgram);
 
-    await openEditDialog(page, programName);
+    await programs.openEditFor(programName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Program Name').clear();
-    await dialog.getByLabel('Program Name').fill('   ');
+    const modal = programs.editProgramModal;
+    await modal.fillName('   ');
 
-    await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await expect(modal.saveButton).toBeDisabled();
   });
 
   // BUG: App allows duplicate program names — no uniqueness validation exists on edit
   test.fail('TC-008: Editing to a duplicate Program Name is rejected', async ({ page, trackProgram }) => {
     const programA = `ProgA-${Date.now()}`;
     const programB = `ProgB-${Date.now()}`;
-    await createProgram(page, programA, 'da', trackProgram);
-    await createProgram(page, programB, 'db', trackProgram);
+    await createProgram(programs, page, programA, 'da', trackProgram);
+    await createProgram(programs, page, programB, 'db', trackProgram);
 
-    await openEditDialog(page, programB);
+    await programs.openEditFor(programB);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Program Name').clear();
-    await dialog.getByLabel('Program Name').fill(programA);
-    await dialog.getByRole('button', { name: 'Save' }).click();
+    const modal = programs.editProgramModal;
+    await modal.fillName(programA);
+    await modal.submit();
 
-    await expect(dialog).toBeVisible();
+    await expect(modal.dialog).toBeVisible();
   });
 
   test('TC-009: Cancelling the edit form discards all changes', async ({ page, trackProgram }) => {
     const programName = `CancelTest ${Date.now()}`;
     const description = 'Original cancel desc';
-    await createProgram(page, programName, description, trackProgram);
+    await createProgram(programs, page, programName, description, trackProgram);
 
-    await openEditDialog(page, programName);
+    await programs.openEditFor(programName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Program Name').clear();
-    await dialog.getByLabel('Program Name').fill('Should Not Save');
-    await dialog.getByLabel('Description').clear();
-    await dialog.getByLabel('Description').fill('Discarded description');
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    const modal = programs.editProgramModal;
+    await modal.fillName('Should Not Save');
+    await modal.fillDescription('Discarded description');
+    await modal.cancel();
 
-    await expect(dialog).not.toBeVisible();
+    await expect(modal.dialog).not.toBeVisible();
     await expect(page.getByText(programName)).toBeVisible();
 
-    await openEditDialog(page, programName);
-    await expect(dialog.getByLabel('Program Name')).toHaveValue(programName);
-    await expect(dialog.getByLabel('Description')).toHaveValue(description);
+    await programs.openEditFor(programName);
+    await expect(modal.programNameInput).toHaveValue(programName);
+    await expect(modal.descriptionInput).toHaveValue(description);
   });
 
   test.skip('TC-010: Unauthorized users cannot edit programs', async () => {
@@ -212,50 +159,47 @@ test.describe('DS-2: Edit Program', () => {
   test('TC-011: Saving with no changes does not cause errors', async ({ page, trackProgram }) => {
     const programName = `NoChange ${Date.now()}`;
     const description = 'Unchanged desc';
-    await createProgram(page, programName, description, trackProgram);
+    await createProgram(programs, page, programName, description, trackProgram);
 
-    await openEditDialog(page, programName);
+    await programs.openEditFor(programName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByRole('button', { name: 'Save' }).click();
+    const modal = programs.editProgramModal;
+    await modal.submit();
 
-    await expect(dialog).not.toBeVisible();
+    await expect(modal.dialog).not.toBeVisible();
     await expect(page.getByText(programName)).toBeVisible();
   });
 
   test('TC-012: Edited Program Name with special characters is handled safely', async ({ page, trackProgram }) => {
     const programName = `SpecChar ${Date.now()}`;
     const specialName = `Web Dev & AI / 2026 - Cohort #1 ${Date.now()}`;
-    await createProgram(page, programName, 'Special char test', trackProgram);
+    await createProgram(programs, page, programName, 'Special char test', trackProgram);
 
-    await openEditDialog(page, programName);
+    await programs.openEditFor(programName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Program Name').clear();
-    await dialog.getByLabel('Program Name').fill(specialName);
-    await dialog.getByRole('button', { name: 'Save' }).click();
+    const modal = programs.editProgramModal;
+    await modal.fillName(specialName);
+    await modal.submit();
 
-    await expect(dialog).not.toBeVisible();
+    await expect(modal.dialog).not.toBeVisible();
     await expect(page.getByText(specialName)).toBeVisible();
   });
 
   test('TC-013: Script-like input is stored as text and not executed', async ({ page, trackProgram }) => {
     const programName = `XssEdit ${Date.now()}`;
     const xssPayload = `<script>alert('x')</script> ${Date.now()}`;
-    await createProgram(page, programName, 'XSS test', trackProgram);
+    await createProgram(programs, page, programName, 'XSS test', trackProgram);
 
     let dialogFired = false;
     page.on('dialog', () => { dialogFired = true; });
 
-    await openEditDialog(page, programName);
+    await programs.openEditFor(programName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Program Name').clear();
-    await dialog.getByLabel('Program Name').fill(xssPayload);
+    const modal = programs.editProgramModal;
+    await modal.fillName(xssPayload);
 
-    const saveBtn = dialog.getByRole('button', { name: 'Save' });
-    if (await saveBtn.isEnabled()) {
-      await saveBtn.click();
+    if (await modal.saveButton.isEnabled()) {
+      await modal.submit();
     }
 
     expect(dialogFired).toBe(false);
@@ -265,16 +209,15 @@ test.describe('DS-2: Edit Program', () => {
     test.setTimeout(60000);
     const programName = `MaxLen ${Date.now()}`;
     const maxName = `Max ${Date.now()} ${'a'.repeat(240)}`.slice(0, 255);
-    await createProgram(page, programName, 'Max boundary test', trackProgram);
+    await createProgram(programs, page, programName, 'Max boundary test', trackProgram);
 
-    await openEditDialog(page, programName);
+    await programs.openEditFor(programName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Program Name').clear();
-    await dialog.getByLabel('Program Name').fill(maxName);
-    await dialog.getByRole('button', { name: 'Save' }).click();
+    const modal = programs.editProgramModal;
+    await modal.fillName(maxName);
+    await modal.submit();
 
-    await expect(dialog).not.toBeVisible();
+    await expect(modal.dialog).not.toBeVisible();
     await expect(page.getByText(maxName)).toBeVisible();
   });
 
@@ -282,51 +225,46 @@ test.describe('DS-2: Edit Program', () => {
   test.fail('TC-015: Program Name beyond maximum length is rejected on edit', async ({ page, trackProgram }) => {
     const programName = `OverLen ${Date.now()}`;
     const overflowName = 'a'.repeat(256);
-    await createProgram(page, programName, 'Overflow test', trackProgram);
+    await createProgram(programs, page, programName, 'Overflow test', trackProgram);
 
-    await openEditDialog(page, programName);
+    await programs.openEditFor(programName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Program Name').clear();
-    await dialog.getByLabel('Program Name').fill(overflowName);
+    const modal = programs.editProgramModal;
+    await modal.fillName(overflowName);
 
-    await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await expect(modal.saveButton).toBeDisabled();
   });
 
   // BUG: Double-click Save applies duplicate updates — no submission guard exists
   test.fail('TC-016: Double-clicking Save does not create duplicate updates', async ({ page, trackProgram }) => {
     const programName = `DblSave ${Date.now()}`;
     const updatedName = `DblSave Updated ${Date.now()}`;
-    await createProgram(page, programName, 'Double save test', trackProgram);
+    await createProgram(programs, page, programName, 'Double save test', trackProgram);
 
-    await openEditDialog(page, programName);
+    await programs.openEditFor(programName);
 
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Program Name').clear();
-    await dialog.getByLabel('Program Name').fill(updatedName);
-    await dialog.getByRole('button', { name: 'Save' }).dblclick();
+    const modal = programs.editProgramModal;
+    await modal.fillName(updatedName);
+    await modal.saveButton.dblclick();
 
-    await expect(dialog).not.toBeVisible();
-    const rows = page.getByRole('row').filter({ hasText: updatedName });
-    await expect(rows).toHaveCount(1);
+    await expect(modal.dialog).not.toBeVisible();
+    await expect(programs.rowFor(updatedName)).toHaveCount(1);
   });
 
   test('TC-017: Edit form reflects latest data after a previous edit', async ({ page, trackProgram }) => {
     const programName = `Stale ${Date.now()}`;
     const firstUpdate = `${programName} v2`;
-    await createProgram(page, programName, 'First version', trackProgram);
+    await createProgram(programs, page, programName, 'First version', trackProgram);
 
-    await openEditDialog(page, programName);
-    const dialog = page.getByRole('dialog', { name: 'Edit Program' });
-    await dialog.getByLabel('Program Name').clear();
-    await dialog.getByLabel('Program Name').fill(firstUpdate);
-    await dialog.getByLabel('Description').clear();
-    await dialog.getByLabel('Description').fill('Second version');
-    await dialog.getByRole('button', { name: 'Save' }).click();
-    await expect(dialog).not.toBeVisible();
+    await programs.openEditFor(programName);
+    const modal = programs.editProgramModal;
+    await modal.fillName(firstUpdate);
+    await modal.fillDescription('Second version');
+    await modal.submit();
+    await expect(modal.dialog).not.toBeVisible();
 
-    await openEditDialog(page, firstUpdate);
-    await expect(dialog.getByLabel('Program Name')).toHaveValue(firstUpdate);
-    await expect(dialog.getByLabel('Description')).toHaveValue('Second version');
+    await programs.openEditFor(firstUpdate);
+    await expect(modal.programNameInput).toHaveValue(firstUpdate);
+    await expect(modal.descriptionInput).toHaveValue('Second version');
   });
 });

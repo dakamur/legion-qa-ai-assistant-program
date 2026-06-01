@@ -1,18 +1,11 @@
-import { test, expect } from '../fixtures/cleanup.fixture';
+import { test, expect } from '../../fixtures/cleanup.fixture';
 
 const BASE_URL = process.env.DIDAXIS_URL ?? 'https://test.didaxis.studio';
 
 type Page = import('@playwright/test').Page;
 
-async function login(page: Page) {
-  await page.goto(`${BASE_URL}/login`);
-  await page.getByLabel('Email').fill(process.env.DIDAXIS_EMAIL!);
-  await page.getByLabel('Password').fill(process.env.DIDAXIS_PASSWORD!);
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
-}
-
 async function navigateToPrograms(page: Page) {
+  await page.goto(BASE_URL);
   await page.getByRole('button', { name: '🎓 Programs' }).click();
   await expect(page.getByRole('button', { name: '+ New Program' })).toBeVisible();
 }
@@ -47,7 +40,6 @@ function clickDeleteIcon(page: Page, programName: string) {
 
 test.describe('DS-4: Delete Program With Confirmation', () => {
   test.beforeEach(async ({ page }) => {
-    await login(page);
     await navigateToPrograms(page);
   });
 

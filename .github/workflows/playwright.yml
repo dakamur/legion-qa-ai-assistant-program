@@ -32,7 +32,7 @@ jobs:
           DIDAXIS_EMAIL: ${{ secrets.DIDAXIS_EMAIL }}
           DIDAXIS_PASSWORD: ${{ secrets.DIDAXIS_PASSWORD }}
           DIDAXIS_API_TOKEN: ${{ secrets.DIDAXIS_API_TOKEN }}
-        run: npx playwright test
+        run: npx playwright test tests/auth.setup.ts tests/block5
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4

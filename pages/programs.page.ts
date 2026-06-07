@@ -35,11 +35,11 @@ export class ProgramsPage extends BasePage {
   }
 
   editButtonFor(programName: string) {
-    return this.rowFor(programName).getByRole('button', { name: '✏️' });
+    return this.rowFor(programName).getByRole('button', { name: /^Edit\b/ });
   }
 
   deleteButtonFor(programName: string) {
-    return this.rowFor(programName).getByRole('button', { name: '🗑' });
+    return this.rowFor(programName).getByRole('button', { name: /^Delete\b/ });
   }
 
   async openEditFor(programName: string) {

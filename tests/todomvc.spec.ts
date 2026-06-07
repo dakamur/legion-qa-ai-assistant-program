@@ -139,7 +139,7 @@ test.describe('Positive Flows', () => {
     await editInput.fill('Buy organic groceries');
     await editInput.press('Enter');
 
-    await expect(page.locator('.todo-list li').first()).toHaveText('Buy organic groceries');
+    await expect(page.locator('.todo-list li').first()).toHaveText('Buy organic grcoeries');
   });
 });
 

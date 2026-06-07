@@ -1,6 +1,8 @@
 node_modules/
 test-results/
 playwright-report/
+playwright-report-run*/
+playwright-report-run*.zip
 blob-report/
 .env
 .playwright-mcp/

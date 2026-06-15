@@ -71,12 +71,14 @@ test.describe('DS-4: Delete Program', () => {
   });
 
   test('TC-005: Deleted program count is updated in the list', async ({ page, trackProgram }) => {
-    const programA = `CountA ${Date.now()}`;
-    const programB = `CountB ${Date.now()}`;
+    const suffix = Date.now();
+    const programA = `CountA ${suffix}`;
+    const programB = `CountB ${suffix}`;
     await createProgram(programs, page, programA, 'count a', trackProgram);
     await createProgram(programs, page, programB, 'count b', trackProgram);
 
-    const rowsBefore = await programs.allRows().count();
+    const ownedRows = programs.rowFor(String(suffix));
+    await expect(ownedRows).toHaveCount(2);
 
     page.on('dialog', async (dialog) => {
       await dialog.accept();
@@ -84,9 +86,7 @@ test.describe('DS-4: Delete Program', () => {
 
     await programs.clickDeleteFor(programA);
     await expect(programs.rowFor(programA)).toHaveCount(0);
-
-    const rowsAfter = await programs.allRows().count();
-    expect(rowsAfter).toBe(rowsBefore - 1);
+    await expect(ownedRows).toHaveCount(1);
     await expect(programs.rowFor(programB)).toBeVisible();
   });
 

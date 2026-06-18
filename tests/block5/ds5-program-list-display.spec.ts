@@ -1,8 +1,30 @@
+import type { APIRequestContext } from '@playwright/test';
 import { test, expect } from '../../fixtures/cleanup.fixture';
+import { DashboardPage } from '../../pages/dashboard.page';
 import { ProgramsPage } from '../../pages/programs.page';
 import { createProgram } from '../../helpers/program.helpers';
 
 const BASE_URL = process.env.DIDAXIS_URL ?? 'https://test.didaxis.studio';
+const MANY_PROGRAMS_COUNT = 50;
+
+async function seedProgramsViaApi(
+  request: APIRequestContext,
+  count: number,
+  prefix: string,
+  trackProgram: (uuid: string) => void,
+) {
+  const apiToken = process.env.DIDAXIS_API_TOKEN!;
+  for (let i = 0; i < count; i++) {
+    const res = await request.post(`${BASE_URL}/api/programs`, {
+      headers: { Authorization: `Bearer ${apiToken}` },
+      data: { name: `${prefix}-${i}`, description: 'Performance seed' },
+    });
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    const id = body?.data?.id ?? body?.id;
+    if (id) trackProgram(id);
+  }
+}
 
 test.describe('DS-5: Program List Display', () => {
   let programs: ProgramsPage;
@@ -195,20 +217,37 @@ test.describe('DS-5: Program List Display', () => {
     await expect(row.getByText(/spécial/)).toBeVisible();
   });
 
-  test('TC-013: Programs page loads within acceptable time with many programs', async () => {
+  test('TC-013: Programs page loads within acceptable time with many programs', async ({
+    request,
+    trackProgram,
+  }) => {
+    test.setTimeout(120000);
+
+    const prefix = `Perf ${Date.now()}`;
+    await seedProgramsViaApi(request, MANY_PROGRAMS_COUNT, prefix, trackProgram);
+
     const startTime = Date.now();
-
     await programs.goto();
-
     const loadTime = Date.now() - startTime;
-    expect(loadTime).toBeLessThan(10000);
 
     await expect(programs.table).toBeVisible();
+    expect(loadTime).toBeLessThan(10000);
   });
 
-  test('TC-014: Programs page is accessible via navigation after login', async () => {
-    await programs.nav.goToPrograms();
+  test('TC-014: Programs page is accessible via navigation after login', async ({
+    page,
+    trackProgram,
+  }) => {
+    const programName = `NavAccess ${Date.now()}`;
+    const dashboard = new DashboardPage(page);
 
+    await programs.goto();
+    await createProgram(programs, page, programName, 'Navigation test', trackProgram);
+
+    await programs.nav.goToDashboard();
+    await expect(dashboard.heading).toBeVisible();
+
+    await programs.nav.goToPrograms();
     await expect(programs.heading).toBeVisible();
     await expect(programs.newProgramButton).toBeVisible();
     await expect(programs.table).toBeVisible();

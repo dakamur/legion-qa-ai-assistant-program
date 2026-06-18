@@ -198,8 +198,11 @@ test.describe('DS-2: Edit Program', () => {
     const modal = programs.editProgramModal;
     await modal.fillName(xssPayload);
 
-    if (await modal.saveButton.isEnabled()) {
+    try {
+      await expect(modal.saveButton).toBeEnabled();
       await modal.submit();
+    } catch {
+      // Save stays disabled for rejected script-like input
     }
 
     expect(dialogFired).toBe(false);

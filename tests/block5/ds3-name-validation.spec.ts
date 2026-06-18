@@ -145,8 +145,11 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await modal.fillName(xssPayload);
     await modal.fillDescription('XSS test');
 
-    if (await modal.createButton.isEnabled()) {
+    try {
+      await expect(modal.createButton).toBeEnabled();
       await modal.submit();
+    } catch {
+      // Create stays disabled for rejected script-like input
     }
 
     expect(dialogFired).toBe(false);

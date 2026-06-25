@@ -3,6 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: 'tests',
+  globalSetup: './support/global-setup.ts',
+  globalTeardown: './support/global-teardown.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -13,10 +15,20 @@ export default defineConfig({
 
   use: {
     trace: 'on',
-    headless: false,
+    headless: !!process.env.CI,
     launchOptions: {
-      slowMo: 1000,
+      slowMo: process.env.CI ? 0 : 1000,
     },
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'tests/.auth/user.json',
+      },
+      dependencies: ['setup'],
+    },
+  ],
 });

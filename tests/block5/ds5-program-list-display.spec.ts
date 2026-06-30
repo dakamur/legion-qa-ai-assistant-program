@@ -13,7 +13,7 @@ async function seedProgramsViaApi(
   prefix: string,
   trackProgram: (uuid: string) => void,
 ) {
-  const apiToken = process.env.DIDAXIS_API_TOKEN!;
+  const apiToken = process.env.DIDAXIS_API_TOKEN!.trim();
   for (let i = 0; i < count; i++) {
     const res = await request.post(`${BASE_URL}/api/programs`, {
       headers: { Authorization: `Bearer ${apiToken}` },

@@ -116,8 +116,7 @@ test.describe('DS-2: Edit Program', () => {
     await expect(modal.saveButton).toBeDisabled();
   });
 
-  // BUG: App allows duplicate program names — no uniqueness validation exists on edit
-  test.fail('TC-008: Editing to a duplicate Program Name is rejected', async ({ page, trackProgram }) => {
+  test('TC-008: Editing to a duplicate Program Name is rejected', async ({ page, trackProgram }) => {
     const programA = `ProgA-${Date.now()}`;
     const programB = `ProgB-${Date.now()}`;
     await createProgram(programs, page, programA, 'da', trackProgram);
@@ -238,8 +237,7 @@ test.describe('DS-2: Edit Program', () => {
     await expect(modal.saveButton).toBeDisabled();
   });
 
-  // BUG: Double-click Save applies duplicate updates — no submission guard exists
-  test.fail('TC-016: Double-clicking Save does not create duplicate updates', async ({ page, trackProgram }) => {
+  test('TC-016: Double-clicking Save does not create duplicate updates', async ({ page, trackProgram }) => {
     const programName = `DblSave ${Date.now()}`;
     const updatedName = `DblSave Updated ${Date.now()}`;
     await createProgram(programs, page, programName, 'Double save test', trackProgram);

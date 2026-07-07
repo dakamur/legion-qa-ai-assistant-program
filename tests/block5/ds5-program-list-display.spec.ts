@@ -129,9 +129,23 @@ test.describe('DS-5: Program List Display', () => {
     await expect(programs.rowFor(programB)).toBeVisible();
   });
 
-  test.skip('TC-006: Empty state is displayed when no programs exist', async () => {
-    // Skipped: requires deleting all programs in the system which is destructive
-    // to shared test data and impractical with 1000+ programs. Needs isolated env.
+  test('TC-006: Empty state is displayed when no programs exist', async ({ page }) => {
+    await page.route('**/api/programs', (route) => {
+      if (route.request().method() === 'GET') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
+      }
+      return route.continue();
+    });
+
+    await programs.goto();
+
+    await expect(programs.emptyStateMessage).toBeVisible();
+    await expect(programs.createFirstProgramButton).toBeVisible();
+    await expect(programs.table).not.toBeVisible();
   });
 
   test('TC-007: Empty state prompt leads to program creation', async () => {

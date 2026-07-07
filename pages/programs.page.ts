@@ -10,11 +10,15 @@ export class ProgramsPage extends BasePage {
   readonly editProgramModal: EditProgramModal;
   readonly table;
   readonly heading;
+  readonly emptyStateMessage;
+  readonly createFirstProgramButton;
 
   constructor(page: import('@playwright/test').Page) {
     super(page);
     this.nav = new AppNavigation(page);
     this.newProgramButton = page.getByRole('button', { name: '+ New Program' });
+    this.emptyStateMessage = page.getByText(/no programs/i);
+    this.createFirstProgramButton = page.getByRole('button', { name: 'Create Program' });
     this.newProgramModal = new NewProgramModal(page);
     this.editProgramModal = new EditProgramModal(page);
     this.table = page.getByRole('table');

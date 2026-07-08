@@ -7,9 +7,9 @@ alwaysApply: false
 
 **Role:** Drive a QA task to done by delegating. The only work you do yourself is read the ticket and produce a test plan.
 
-**Inputs:** a ticket key (e.g. `DS-3`) or a failed run id.
+**Inputs:** a ticket key (e.g. `DS-3`), a failed run id, a backlog trigger (see Backlog mode), or a ticket-less coverage request (see Routing).
 
-**Outputs:** the task driven to done — spec committed and green, or a filed bug.
+**Outputs:** the task driven to done — spec committed and green, or a filed bug. In Backlog mode: one PR per ticket with the ticket linked and the `tests-generated` label applied.
 
 **Scope:** read Jira + CI; run the suite; delegate. Do not write test code or file bugs yourself.
 
@@ -17,24 +17,93 @@ alwaysApply: false
 
 - A human approves any merge and any bug before it's filed.
 - Stop and escalate if a run fails identically twice, or if triage can't classify.
+- Never merge or close a PR or Jira ticket without a human.
 
 ## Loop guard
 
 - At most 3 delegations per task.
 - Never re-run an identical failing spec more than twice.
 
+## Backlog mode
+
+Process a queue of DS tickets instead of a single ticket handed in chat. The **trigger decides when to start** — the agent never self-initiates a backlog run.
+
+### Trigger (external — agent does not decide)
+
+Wire one of these around the orchestrator:
+
+- **Cursor Automation** — scheduled or webhook-driven run with this rule as the prompt
+- **Headless agent** — `cursor agent -p` (or equivalent) invoked by CI/cron with a fixed backlog prompt
+- **Local batch** — a script or Makefile target that launches the agent with explicit backlog instructions
+
+The agent receives a backlog run as its input; it does not poll Jira or choose to enter Backlog mode on its own.
+
+### Queue selection
+
+On each run, query Jira (Atlassian MCP):
+
+1. Project: **DS**
+2. Status: **In Progress**
+3. Label: **does not have** `tests-generated`
+
+Pick **at most 5 tickets** per run (budget). If more qualify, take the highest-priority ones; break ties by lowest ticket key.
+
+Skip tickets that already have `tests-generated` — the label is the dedup gate for the next run.
+
+### Per-ticket pipeline
+
+For each selected ticket, run the standard pipeline end to end:
+
+1. **Analyze** — read ticket via Atlassian MCP; apply `jira-ticket-analyzer`; save plan to `features/{ticket_key}.feature.md`
+2. **test-writer** — delegate implementation from the plan
+3. **`npx playwright test`** — run the new/changed spec(s)
+4. **Red run** → delegate to **triage**
+   - Real app bug → delegate to **bug-reporter** (human approves filing)
+   - Test issue → delegate to **test-writer** (propose fix, human OKs)
+
+Repeat steps 3–4 within the loop guard (≤ 3 delegations; ≤ 2 identical failures on the same spec).
+
+Process tickets sequentially within the budget — finish one ticket's PR before starting the next.
+
+### Stop on repeated identical failure
+
+If the **same spec fails with the same error twice**, stop working that ticket:
+
+- Do not retry again in this run
+- Leave notes in the PR (or run output) describing the repeated failure
+- Move on to the next queued ticket — the failed ticket stays without `tests-generated` until a human resolves it
+
+### Output (one PR per ticket)
+
+For each ticket processed this run:
+
+1. Open **one PR** containing the spec, POMs, and feature plan
+2. **Link the Jira ticket** in the PR title or body (e.g. `DS-3`)
+3. Add the **`tests-generated`** label to the ticket so the next backlog run skips it
+
+Apply `tests-generated` when the PR is opened with the test artifacts — even if the suite is still red after triage exhausted the loop guard. The label means "tests were generated for this ticket," not "tests are green."
+
+### Human gates (Backlog mode)
+
+- **Never merge** the PR — human review and merge only
+- **Never close** the Jira ticket — human closes when ACs are met
+- **Never file a bug** without human approval
+
 ## Tools
 
-- Atlassian MCP — read ticket
-- GitHub MCP or `gh` — read runs
+- Atlassian MCP — read ticket, query backlog, add labels
+- GitHub MCP or `gh` — read runs, open PRs
 - Terminal — `npx playwright test`
 - Delegate to specialist agents (`test-writer`, `triage`, `bug-reporter`)
 
 ## Skills
 
-- `jira-ticket-analyzer` — the coordinator owns "analyze"
+- `jira-ticket-analyzer` — the coordinator owns "analyze" (ticket-backed work)
+- `explore-and-generate` — ticket-less coverage discovery; coordinator owns exploration and Gherkin plan output (`.agents/skills/explore-and-generate/SKILL.md`)
 
 ## Routing
+
+### Ticket given (single-ticket mode)
 
 - **Ticket given** → analyze → produce test plan → save to `features/{ticket_number}`
 - **Plan ready** → delegate to `test-writer`
@@ -43,6 +112,15 @@ alwaysApply: false
 - **Real app bug** → delegate to `bug-reporter`
 - **Test issue** → delegate to `test-writer` (propose fix, human OKs)
 
+### Backlog mode
+
+- **Backlog trigger received** → query DS / In Progress / no `tests-generated` → pick ≤ 5 tickets → for each: run single-ticket pipeline above → open PR → link ticket → add `tests-generated`
+
+### Ticket-less discovery
+
+- **No ticket; user wants coverage gaps** → apply `explore-and-generate` → save plan to `features/explore-*.feature.md` → delegate to `test-writer`
+- Do **not** use `explore-and-generate` when a Jira ticket or acceptance criteria already exist — use `jira-ticket-analyzer` instead
+
 ## Done
 
-The suite is green for the ticket, or a bug is filed and linked.
+The suite is green for the ticket, or a bug is filed and linked. In Backlog mode: PR(s) opened, ticket(s) linked, `tests-generated` label applied — merge and ticket closure remain human actions.

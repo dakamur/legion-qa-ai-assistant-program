@@ -2,8 +2,8 @@ name: Test Generation
 
 on:
   schedule:
-    # 5:15 PM EST Mon–Fri (22:15 UTC; EST = UTC-5)
-    - cron: '15 22 * * 1-5'
+    # Weekdays 06:00 UTC
+    - cron: '0 6 * * 1-5'
   workflow_dispatch:
 
 concurrency:
@@ -20,6 +20,16 @@ jobs:
     timeout-minutes: 120
     runs-on: ubuntu-latest
     environment: dev1
+    env:
+      DIDAXIS_URL: ${{ secrets.DIDAXIS_URL }}
+      DIDAXIS_EMAIL: ${{ secrets.DIDAXIS_EMAIL }}
+      DIDAXIS_PASSWORD: ${{ secrets.DIDAXIS_PASSWORD }}
+      DIDAXIS_API_TOKEN: ${{ secrets.DIDAXIS_API_TOKEN }}
+      CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+      ATLASSIAN_API_TOKEN: ${{ secrets.ATLASSIAN_API_TOKEN }}
+      ATLASSIAN_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
+      ATLASSIAN_BASE_URL: ${{ secrets.ATLASSIAN_BASE_URL }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,15 +51,15 @@ jobs:
           curl https://cursor.com/install -fsS | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Configure git for agent commits
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Preflight Jira backlog access
+        run: node scripts/query-backlog.mjs
+
       - name: Generate tests from In Progress backlog
-        env:
-          DIDAXIS_URL: ${{ secrets.DIDAXIS_URL }}
-          DIDAXIS_EMAIL: ${{ secrets.DIDAXIS_EMAIL }}
-          DIDAXIS_PASSWORD: ${{ secrets.DIDAXIS_PASSWORD }}
-          DIDAXIS_API_TOKEN: ${{ secrets.DIDAXIS_API_TOKEN }}
-          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
-          ATLASSIAN_API_TOKEN: ${{ secrets.ATLASSIAN_API_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           agent -p --force --trust --output-format text "$(cat <<'EOF'
           You are the QA orchestrator for this Playwright test repository. Work the Jira "In Progress" backlog for the DS project.

@@ -59,7 +59,8 @@ For each selected ticket, run the standard pipeline end to end:
 3. **`npx playwright test`** — run the new/changed spec(s)
 4. **Red run** → delegate to **triage**
    - Real app bug → delegate to **bug-reporter** (human approves filing)
-   - Test issue → delegate to **test-writer** (propose fix, human OKs)
+   - Test issue (drift) → delegate to **self-heal** (POM patch + PR, human OKs merge)
+   - Test issue (other) → delegate to **test-writer** (propose fix, human OKs)
 
 Repeat steps 3–4 within the loop guard (≤ 3 delegations; ≤ 2 identical failures on the same spec).
 
@@ -94,12 +95,13 @@ Apply `tests-generated` when the PR is opened with the test artifacts — even i
 - Atlassian MCP — read ticket, query backlog, add labels
 - GitHub MCP or `gh` — read runs, open PRs
 - Terminal — `npx playwright test`
-- Delegate to specialist agents (`test-writer`, `triage`, `bug-reporter`)
+- Delegate to specialist agents (`test-writer`, `triage`, `bug-reporter`, `self-heal`)
 
 ## Skills
 
 - `jira-ticket-analyzer` — the coordinator owns "analyze" (ticket-backed work)
 - `explore-and-generate` — ticket-less coverage discovery; coordinator owns exploration and Gherkin plan output (`.agents/skills/explore-and-generate/SKILL.md`)
+- `self-heal` — locator drift repair after triage; delegate via `self-heal` agent (`.cursor/skills/self-heal/SKILL.md`)
 
 ## Routing
 
@@ -110,7 +112,8 @@ Apply `tests-generated` when the PR is opened with the test artifacts — even i
 - **Spec returned** → run: `npx playwright test`
 - **Run is red** → delegate to `triage`
 - **Real app bug** → delegate to `bug-reporter`
-- **Test issue** → delegate to `test-writer` (propose fix, human OKs)
+- **Test issue (drift)** — locator/selector drift, stale POM → delegate to `self-heal`
+- **Test issue (other)** — flaky timing, wrong test data, missing POM method → delegate to `test-writer`
 
 ### Backlog mode
 

@@ -39,7 +39,7 @@ export class ProgramsPage extends BasePage {
   }
 
   editButtonFor(programName: string) {
-    return this.rowFor(programName).getByRole('button', { name: /^Edit\b/ });
+    return this.rowFor(programName).getByRole('button', { name: /^Edittt\b/ });
   }
 
   deleteButtonFor(programName: string) {

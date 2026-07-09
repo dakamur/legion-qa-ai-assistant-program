@@ -2,8 +2,8 @@ name: Test Generation
 
 on:
   schedule:
-    # 9:00 AM EST Mon–Fri (14:00 UTC; EST = UTC-5)
-    - cron: '0 14 * * 1-5'
+    # 5:15 PM EST Mon–Fri (22:15 UTC; EST = UTC-5)
+    - cron: '15 22 * * 1-5'
   workflow_dispatch:
 
 concurrency:
@@ -17,22 +17,12 @@ permissions:
 jobs:
   generate:
     name: Generate Playwright tests from backlog
+    timeout-minutes: 120
     runs-on: ubuntu-latest
     environment: dev1
-    timeout-minutes: 120
-    env:
-      DIDAXIS_URL: ${{ secrets.DIDAXIS_URL }}
-      DIDAXIS_EMAIL: ${{ secrets.DIDAXIS_EMAIL }}
-      DIDAXIS_PASSWORD: ${{ secrets.DIDAXIS_PASSWORD }}
-      DIDAXIS_API_TOKEN: ${{ secrets.DIDAXIS_API_TOKEN }}
-      ATLASSIAN_BASE_URL: ${{ secrets.ATLASSIAN_BASE_URL }}
-      ATLASSIAN_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
-      JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -51,16 +41,15 @@ jobs:
           curl https://cursor.com/install -fsS | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
       - name: Generate tests from In Progress backlog
         env:
+          DIDAXIS_URL: ${{ secrets.DIDAXIS_URL }}
+          DIDAXIS_EMAIL: ${{ secrets.DIDAXIS_EMAIL }}
+          DIDAXIS_PASSWORD: ${{ secrets.DIDAXIS_PASSWORD }}
+          DIDAXIS_API_TOKEN: ${{ secrets.DIDAXIS_API_TOKEN }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           ATLASSIAN_API_TOKEN: ${{ secrets.ATLASSIAN_API_TOKEN }}
-          CURSOR_GH_MCP: ${{ secrets.CURSOR_GH_MCP }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           agent -p --force --trust --output-format text "$(cat <<'EOF'
           You are the QA orchestrator for this Playwright test repository. Work the Jira "In Progress" backlog for the DS project.
@@ -68,10 +57,10 @@ jobs:
           Budget: process at most 5 tickets this run. Never merge any pull request.
 
           For each ticket (up to the budget):
-          1. Analyze the ticket acceptance criteria (use Jira REST API with ATLASSIAN_EMAIL + ATLASSIAN_API_TOKEN against ATLASSIAN_BASE_URL; project key JIRA_PROJECT_KEY).
+          1. Analyze the ticket acceptance criteria (use Jira via Atlassian MCP or REST API with ATLASSIAN_API_TOKEN).
           2. Write a conforming Playwright spec under tests/ following .cursor/rules/playwright-conventions.mdc, the pom-conventions skill, and the api-cleanup skill. Use Page Object Models from pages/; do not modify application source.
           3. Run the spec: npx playwright test <spec-path>
-          4. If the run is green, open a pull request linked to the Jira ticket (reference the ticket key in the branch name, commit message, and PR title/body). Add the label tests-generated to the PR via gh.
+          4. Open a pull request linked to the Jira ticket (reference the ticket key in the branch name, commit message, and PR title/body). Add the tests-generated label to the Jira ticket.
           5. If the run fails due to an app bug, stop on that ticket and summarize the failure; do not open a PR for a red spec.
 
           Guardrails:

@@ -8,7 +8,7 @@ export class NewProgramModal {
 
   constructor(private readonly page: Page) {
     this.dialog = page.getByRole('dialog', { name: 'New Program' });
-    this.programNameInput = this.dialog.getByLabel('Program Name');
+    this.programNameInput = page.locator('input').filter({ hasAttribute: 'placeholder', hasValue: 'e.g. Computer Engineering'});
     this.descriptionInput = this.dialog.getByLabel('Description');
     this.createButton = this.dialog.getByRole('button', { name: 'Create', exact: true });
   }

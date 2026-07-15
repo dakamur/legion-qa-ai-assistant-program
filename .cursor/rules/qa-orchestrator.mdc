@@ -18,11 +18,55 @@ alwaysApply: false
 - A human approves any merge and any bug before it's filed.
 - Stop and escalate if a run fails identically twice, or if triage can't classify.
 - Never merge or close a PR or Jira ticket without a human.
+- **Never heal an assertion** — locator fixes are POM-only; specs and `expect()` calls stay untouched. The `afterFileEdit` hook in `.cursor/hooks.json` blocks weakened assertions in `tests/**`.
+- **Never merge a repair PR** — human review and merge only.
 
 ## Loop guard
 
 - At most 3 delegations per task.
 - Never re-run an identical failing spec more than twice.
+
+## Heal on red
+
+When a run is red — CI failure, failed run id, or a local `npx playwright test` — drive repair through triage and heal. Do not patch locators or file bugs yourself.
+
+### 1. Triage (always first)
+
+Delegate to **triage** with the failed run id or URL. Triage applies `ci-failure-triage`, reads the trace against repo source, and returns:
+
+- Root cause, failing spec, evidence
+- Classification: **real app bug** | **test issue (drift)** | **test issue (other)**
+
+If triage cannot classify → **stop and escalate**. Do not heal or file without a diagnosis.
+
+### 2. Route by classification
+
+| Classification | Delegate to | Action |
+|---|---|---|
+| **test issue (drift)** | **self-heal** | POM locator repair → re-run → repair PR |
+| **real app bug** | **bug-reporter** | File and link Jira bug — **never heal** |
+| **test issue (other)** | **test-writer** | Propose spec/POM fix — human OKs |
+
+### 3. Self-heal workflow (drift only)
+
+Apply the **`self-heal` skill** (`.cursor/skills/self-heal/SKILL.md`) via the **self-heal** agent. Prerequisites: triage diagnosis classified **test issue (drift)** with failing spec, assertion line, affected POM file, and old locator.
+
+1. **Re-discover** — Playwright MCP (`user-Playwright`): navigate to the failing page state, `browser_snapshot` for the a11y tree, derive the new locator (`getByRole` → `getByLabel` → `getByText` → `getByTestId`; never CSS/XPath).
+2. **Patch POM** — minimal diff in the POM file triage named; **one locator per heal**; do not edit `tests/**/*.spec.ts`.
+3. **Prove green** — `npx playwright test <failing-spec>`; assertions must be **unchanged**. If green requires touching specs or weakening `expect()` → **stop and escalate**; revert any accidental spec edits.
+4. **Open repair PR** — branch `heal/<short-description>`, POM-only commit, link the **failed run id/URL** in the PR body, note locator diff and that assertions are unchanged. **Do not merge.**
+
+If re-run is still red with the **same locator error** → retry a11y discovery (within heal budget); do not broaden locators. If failure is **different** or app behavior is wrong → stop healing; re-triage or route to **bug-reporter**.
+
+### Heal budget and escalation
+
+- **At most 5 heals per run** — count each self-heal delegation toward this budget.
+- **Stop and escalate** when:
+  - A heal cannot prove green without assertion changes
+  - The heal budget is exhausted
+  - The same spec fails with the same error twice (loop guard)
+  - Triage classification is missing, ambiguous, or **real app bug**
+- Leave notes in the PR or run output describing what was tried and why healing stopped.
 
 ## Backlog mode
 
@@ -57,10 +101,7 @@ For each selected ticket, run the standard pipeline end to end:
 1. **Analyze** — read ticket via Atlassian MCP; apply `jira-ticket-analyzer`; save plan to `features/{ticket_key}.feature.md`
 2. **test-writer** — delegate implementation from the plan
 3. **`npx playwright test`** — run the new/changed spec(s)
-4. **Red run** → delegate to **triage**
-   - Real app bug → delegate to **bug-reporter** (human approves filing)
-   - Test issue (drift) → delegate to **self-heal** (POM patch + PR, human OKs merge)
-   - Test issue (other) → delegate to **test-writer** (propose fix, human OKs)
+4. **Red run** → follow **Heal on red** (triage → route; ≤ 5 heals per run; never merge repair PRs)
 
 Repeat steps 3–4 within the loop guard (≤ 3 delegations; ≤ 2 identical failures on the same spec).
 
@@ -101,7 +142,9 @@ Apply `tests-generated` when the PR is opened with the test artifacts — even i
 
 - `jira-ticket-analyzer` — the coordinator owns "analyze" (ticket-backed work)
 - `explore-and-generate` — ticket-less coverage discovery; coordinator owns exploration and Gherkin plan output (`.agents/skills/explore-and-generate/SKILL.md`)
-- `self-heal` — locator drift repair after triage; delegate via `self-heal` agent (`.cursor/skills/self-heal/SKILL.md`)
+- `ci-failure-triage` — applied by **triage** agent on red runs (`.agents/skills/ci-failure-triage/SKILL.md`)
+- `self-heal` — **registered** locator drift repair after triage classifies drift; delegate via **self-heal** agent (`.cursor/skills/self-heal/SKILL.md`). POM-only; assertions unchanged; one locator per heal; repair PR linked to the run.
+- `jira-bug-reporter` — applied by **bug-reporter** when triage classifies real app bug (`.agents/skills/jira-bug-reporter/SKILL.md`)
 
 ## Routing
 
@@ -110,9 +153,9 @@ Apply `tests-generated` when the PR is opened with the test artifacts — even i
 - **Ticket given** → analyze → produce test plan → save to `features/{ticket_number}`
 - **Plan ready** → delegate to `test-writer`
 - **Spec returned** → run: `npx playwright test`
-- **Run is red** → delegate to `triage`
-- **Real app bug** → delegate to `bug-reporter`
-- **Test issue (drift)** — locator/selector drift, stale POM → delegate to `self-heal`
+- **Run is red** → follow **Heal on red** (triage → route by classification; ≤ 5 heals per run)
+- **Real app bug** → delegate to `bug-reporter` — never heal
+- **Test issue (drift)** — locator/selector drift, stale POM → delegate to `self-heal` (Playwright MCP → POM patch → prove green → repair PR)
 - **Test issue (other)** — flaky timing, wrong test data, missing POM method → delegate to `test-writer`
 
 ### Backlog mode
@@ -126,4 +169,4 @@ Apply `tests-generated` when the PR is opened with the test artifacts — even i
 
 ## Done
 
-The suite is green for the ticket, or a bug is filed and linked. In Backlog mode: PR(s) opened, ticket(s) linked, `tests-generated` label applied — merge and ticket closure remain human actions.
+The suite is green for the ticket, a repair PR is open and linked to the failed run (human merges), or a bug is filed and linked. In Backlog mode: PR(s) opened, ticket(s) linked, `tests-generated` label applied — merge and ticket closure remain human actions.

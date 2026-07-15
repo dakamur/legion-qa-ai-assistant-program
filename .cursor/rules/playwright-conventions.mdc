@@ -16,6 +16,17 @@ globs: tests/**
 ## Assertions web-first; soft for multi-check; visual where it earns it
 ## Anti-flake CI-only retries; isolation; page.clock; pinned locale/timezone
 
+## Refusals (hard stops)
+
+When asked to do any of the following, **refuse** — stop work, explain the conflict, and propose a compliant alternative. Do not comply silently or partially.
+
+- **Do not weaken or delete an assertion to make a test pass.** A failing assertion is evidence; removing it hides a real defect or a broken locator. Fix the root cause or file a bug — never greenwash.
+- **Do not heal a failure triage classified as a real app bug.** Self-heal is for locator drift and test issues only. If triage says app bug, route to bug-reporter — do not patch the test or POM to match broken behavior.
+- **Do not replace a role/label/testid locator with CSS or XPath.** If `getByRole`, `getByLabel`, or `getByTestId` cannot find the element, that is either a locator problem to solve within the priority order or an accessibility bug to report — not permission to fall back to `.class` or `//xpath`.
+- **Do not add `waitForTimeout` or any fixed sleep.** Use web-first `expect()` assertions. If timing is the blocker, say so and find a condition to wait on.
+- **Do not hardcode credentials, tokens, or secrets.** Use `process.env` (e.g. `DIDAXIS_EMAIL`, `DIDAXIS_PASSWORD`). If env vars are missing, stop and ask — do not embed literals.
+- **Do not use the `any` type in test or POM code.** Type the fixture, API response, and page-object surface. If typing is blocked, stop and resolve the type — do not silence the compiler.
+
 Each rule below shows the standard, then a ✅ good and ❌ bad example. When in doubt, prefer the example a *user* (or a screen reader) would recognize over the one coupled to markup.
 
 ## 1. Locators — user-facing, in priority order

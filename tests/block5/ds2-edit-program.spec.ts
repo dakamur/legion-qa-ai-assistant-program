@@ -117,8 +117,6 @@ test.describe('DS-2: Edit Program', () => {
   });
 
   test('TC-008: Editing to a duplicate Program Name is rejected', async ({ page, trackProgram }) => {
-    test.fail(true, 'Known demo bug — duplicate program names are allowed on rename.');
-
     const programA = `ProgA-${Date.now()}`;
     const programB = `ProgB-${Date.now()}`;
     await createProgram(programs, page, programA, 'da', trackProgram);

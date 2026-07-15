@@ -69,8 +69,7 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await expect(modal.createButton).toBeDisabled();
   });
 
-  // BUG: App allows duplicate program names — no uniqueness validation exists
-  test.fail('TC-006: Duplicate program name is rejected with error message', async () => {
+  test('TC-006: Duplicate program name is rejected with error message', async () => {
     const programName = `DupCheck ${Date.now()}`;
 
     await programs.openNewProgram();
@@ -88,8 +87,7 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await expect(modal.dialog).toBeVisible();
   });
 
-  // BUG: App allows duplicate names regardless of casing — no case-insensitive check
-  test.fail('TC-007: Duplicate name with different casing is handled', async () => {
+  test('TC-007: Duplicate name with different casing is handled', async () => {
     const programName = `CaseCheck ${Date.now()}`;
 
     await programs.openNewProgram();
@@ -107,8 +105,7 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await expect(modal.dialog).toBeVisible();
   });
 
-  // BUG: App does not trim before duplicate check — padded duplicates slip through
-  test.fail('TC-008: Duplicate name with leading/trailing whitespace is rejected', async () => {
+  test('TC-008: Duplicate name with leading/trailing whitespace is rejected', async () => {
     const programName = `TrimDup ${Date.now()}`;
 
     await programs.openNewProgram();
@@ -168,8 +165,7 @@ test.describe('DS-3: Name Validation & Duplicate Prevention', () => {
     await expect(programs.rowFor(programName)).toBeVisible();
   });
 
-  // BUG: App allows duplicate names on edit — no uniqueness validation on save
-  test.fail('TC-012: Duplicate check applies during edit as well as create', async ({ page, trackProgram }) => {
+  test('TC-012: Duplicate check applies during edit as well as create', async ({ page, trackProgram }) => {
     const programA = `ProgA-${Date.now()}`;
     const programB = `ProgB-${Date.now()}`;
     await createProgram(programs, page, programA, 'da', trackProgram);

@@ -67,8 +67,7 @@ test.describe('DS-1: Create Program', () => {
     await expect(modal.dialog).toBeVisible();
   });
 
-  // BUG: App allows duplicate program names — no uniqueness validation exists
-  test.fail('TC-006: Duplicate Program Name is rejected', async ({ page, trackProgram }) => {
+  test('TC-006: Duplicate Program Name is rejected', async ({ page, trackProgram }) => {
     const programName = unique('Duplicate Test');
     await createProgram(programs, page, programName, 'First creation', trackProgram);
 
